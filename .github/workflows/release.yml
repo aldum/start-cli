@@ -1,0 +1,85 @@
+name: Cross-Platform CLI Builder
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            rust_target: x86_64-apple-darwin
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            rust_target: aarch64-apple-darwin
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            rust_target: x86_64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            rust_target: aarch64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout start-os
+        uses: actions/checkout@v4
+        with:
+          repository: start9labs/start-os
+          ref: next/minor
+          path: start-os
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          target: ${{ matrix.rust_target }}
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI
+        working-directory: ./start-os
+        env:
+          ARCH: ${{ matrix.rust_target }}
+        run: |
+          make cli
+          mkdir -p ../artifacts
+          cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: cli-binaries
+          path: artifacts/
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: cli-binaries
+          path: release-binaries
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-binaries/start-cli-*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
