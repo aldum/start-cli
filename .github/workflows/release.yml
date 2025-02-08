@@ -70,14 +70,20 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: cli-binaries-*
+          pattern: cli-binaries-*
           path: release-binaries
+          merge-multiple: true
+
+      - name: Verify artifacts
+        run: |
+          echo "Downloaded binaries:"
+          ls -lh release-binaries/start-cli-*
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-binaries/**/start-cli-*
+            release-binaries/start-cli-*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
