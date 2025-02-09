@@ -20,9 +20,11 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
             rust_target: x86_64-apple-darwin
+            MACOSX_DEPLOYMENT_TARGET: "10.7"
           - target: aarch64-apple-darwin
             os: macos-latest
             rust_target: aarch64-apple-darwin
+            MACOSX_DEPLOYMENT_TARGET: "11.0"
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             rust_target: x86_64-unknown-linux-gnu
@@ -52,7 +54,10 @@ jobs:
         working-directory: ./start-os
         env:
           ARCH: ${{ matrix.rust_target }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.MACOSX_DEPLOYMENT_TARGET }}
+          CARGO_BUILD_TARGET: ${{ matrix.rust_target }}
         run: |
+          rustup target add ${{ matrix.rust_target }}
           make cli
           mkdir -p ../artifacts
           cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
