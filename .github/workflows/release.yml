@@ -43,6 +43,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          targets: ${{ matrix.rust_target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -55,6 +56,11 @@ jobs:
           make cli
           mkdir -p ../artifacts
           cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
+
+      - name: Generate SHA256 for binary
+        working-directory: artifacts
+        run: |
+          sha256sum start-cli-${{ matrix.target }} > start-cli-${{ matrix.target }}.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -74,16 +80,21 @@ jobs:
           path: release-binaries
           merge-multiple: true
 
-      - name: Verify artifacts
+      - name: Verify artifacts and combine checksums
+        working-directory: release-binaries
         run: |
           echo "Downloaded binaries:"
-          ls -lh release-binaries/start-cli-*
+          ls -lh start-cli-*
+          cat *.sha256 > sha256sums.txt
+          echo "SHA256 checksums:"
+          cat sha256sums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release-binaries/start-cli-*
+            release-binaries/sha256sums.txt
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
