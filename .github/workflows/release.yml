@@ -18,18 +18,17 @@ jobs:
       matrix:
         include:
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-13-xlarge
             rust_target: x86_64-apple-darwin
           - target: aarch64-apple-darwin
             os: macos-latest
             rust_target: aarch64-apple-darwin
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04
             rust_target: x86_64-unknown-linux-gnu
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04-arm64
             rust_target: aarch64-unknown-linux-gnu
-            packages: gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
     steps:
       - name: Checkout start-os
@@ -39,12 +38,6 @@ jobs:
           ref: next/minor
           path: start-os
           submodules: recursive
-
-      - name: Install cross-compilation tools
-        if: matrix.packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ matrix.packages }}
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -59,7 +52,6 @@ jobs:
         working-directory: ./start-os
         env:
           ARCH: ${{ matrix.rust_target }}
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: |
           make cli
           mkdir -p ../artifacts
