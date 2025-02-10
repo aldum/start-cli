@@ -90,12 +90,24 @@ jobs:
           echo "SHA256 checksums:"
           cat sha256sums.txt
 
+      - name: Generate release notes
+        working-directory: release-binaries
+        run: |
+          echo "## Start CLI ${{ github.ref_name }}" > release-notes.txt
+          echo "" >> release-notes.txt
+          echo "## SHA256 Checksums" >> release-notes.txt
+          echo '```' >> release-notes.txt
+          cat sha256sums.txt >> release-notes.txt
+          echo '```' >> release-notes.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release-binaries/start-cli-*
             release-binaries/sha256sums.txt
-          generate_release_notes: true
+          name: Start CLI ${{ github.ref_name }}
+          body_path: release-binaries/release-notes.txt
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
