@@ -73,21 +73,20 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: build
+
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          artifact: cli-binaries-${{ matrix.target }}
-          path: release-binaries/${{ matrix.target }}
+          pattern: cli-binaries-*
+          path: release-binaries
 
       - name: Verify artifacts and combine checksums
         working-directory: release-binaries
         run: |
           echo "Downloaded binaries:"
-          ls -lh ${{ matrix.target }}
-          cat ${{ matrix.target }}/*.sha256 > sha256sums.txt
-          echo "SHA256 checksums:"
-          cat sha256sums.txt
+          ls -lh *
+          cat *.sha256 > sha256sums.txt
 
       - name: Generate release notes
         working-directory: release-binaries
@@ -103,7 +102,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-binaries/**/*
+            release-binaries/start-cli-*.tar.gz
+            release-binaries/sha256sums.txt
           name: Start CLI ${{ github.ref_name }}
           body_path: release-binaries/release-notes.txt
           generate_release_notes: false
