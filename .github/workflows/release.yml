@@ -18,10 +18,10 @@ jobs:
       matrix:
         include:
           - target: x86_64-apple-darwin
-            os: macos-14-xlarge
+            os: macos-13-xlarge
             rust_target: x86_64-apple-darwin
           - target: aarch64-apple-darwin
-            os: macos-latest
+            os: macos-latest-xlarge
             rust_target: aarch64-apple-darwin
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
@@ -80,6 +80,7 @@ jobs:
         with:
           pattern: cli-binaries-*
           path: release-binaries
+          merge-multiple: true
 
       - name: Verify artifacts and combine checksums
         working-directory: release-binaries
@@ -87,6 +88,8 @@ jobs:
           echo "Downloaded binaries:"
           ls -lh *
           cat *.sha256 > sha256sums.txt
+          echo "SHA256 checksums:"
+          cat sha256sums.txt
 
       - name: Generate release notes
         working-directory: release-binaries
