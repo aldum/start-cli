@@ -57,10 +57,11 @@ jobs:
           mkdir -p ../artifacts
           cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
 
-      - name: Generate SHA256 for binary
+      - name: Create archive and generate SHA256
         working-directory: artifacts
         run: |
-          shasum -a 256 start-cli-${{ matrix.target }} > start-cli-${{ matrix.target }}.sha256
+          tar -czf start-cli-${{ matrix.target }}.tar.gz start-cli-${{ matrix.target }}
+          shasum -a 256 start-cli-${{ matrix.target }}.tar.gz > start-cli-${{ matrix.target }}.tar.gz.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
