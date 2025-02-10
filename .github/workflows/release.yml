@@ -18,7 +18,7 @@ jobs:
       matrix:
         include:
           - target: x86_64-apple-darwin
-            os: macos-13-xlarge
+            os: macos-14-xlarge
             rust_target: x86_64-apple-darwin
           - target: aarch64-apple-darwin
             os: macos-latest
@@ -77,16 +77,15 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: cli-binaries-*
-          path: release-binaries
-          merge-multiple: true
+          name: cli-binaries-${{ matrix.target }}
+          path: release-binaries/${{ matrix.target }}
 
       - name: Verify artifacts and combine checksums
         working-directory: release-binaries
         run: |
           echo "Downloaded binaries:"
-          ls -lh start-cli-*
-          cat *.sha256 > sha256sums.txt
+          ls -lh ${{ matrix.target }}
+          cat ${{ matrix.target }}/*.sha256 > sha256sums.txt
           echo "SHA256 checksums:"
           cat sha256sums.txt
 
@@ -95,7 +94,7 @@ jobs:
         run: |
           echo "## Start CLI ${{ github.ref_name }}" > release-notes.txt
           echo "" >> release-notes.txt
-          echo "## SHA256 Checksums" >> release-notes.txt
+          echo "### SHA256 Checksums" >> release-notes.txt
           echo '```' >> release-notes.txt
           cat sha256sums.txt >> release-notes.txt
           echo '```' >> release-notes.txt
@@ -104,8 +103,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-binaries/start-cli-*
-            release-binaries/sha256sums.txt
+            release-binaries/**/*
           name: Start CLI ${{ github.ref_name }}
           body_path: release-binaries/release-notes.txt
           generate_release_notes: false
