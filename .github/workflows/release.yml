@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: start9labs/start-os
-          ref: chore/cli-build
+          ref: next/minor
           path: start-os
           submodules: recursive
 
