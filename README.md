@@ -20,23 +20,30 @@ Official StartOS source code is here: [start9labs/start-os](https://github.com/s
 
 ## 🔧 Installation
 
-Download the binary archive matching your platform from the [Releases](https://github.com/start9Labs/start-cli/releases) page.  
+### Automated Installation (Recommended)
 
-### macOS (Intel & Apple Silicon)
+The easiest way to install start-cli is using our automated installer script:
 ```
-tar -xzf start-cli-x86_64-apple-darwin.tar.gz     # Intel
-tar -xzf start-cli-aarch64-apple-darwin.tar.gz    # Apple Silicon
-chmod +x start-cli-*
-mv start-cli-* /usr/local/bin/start-cli
+curl -fsSL https://raw.githubusercontent.com/Start9Labs/start-cli/main/start-cli-installer.sh | sh
+```
+Or download and run the script manually:
+```
+curl -fsSL https://raw.githubusercontent.com/Start9Labs/start-cli/main/start-cli-installer.sh -o start-cli-installer.sh
+chmod +x start-cli-installer.sh
+./start-cli-installer.sh
 ```
 
-### Linux (x86_64 & ARM64)
-```
-tar -xzf start-cli-x86_64-unknown-linux-gnu.tar.gz    # Intel/AMD64
-tar -xzf start-cli-aarch64-unknown-linux-gnu.tar.gz   # ARM64 (e.g. ARM servers, Raspberry Pi)
-chmod +x start-cli-*
-sudo mv start-cli-* /usr/local/bin/start-cli
-```
+The installer will:
+- → Detect your platform automatically (macOS/Linux, Intel/ARM64)
+- → Download the correct binary from GitHub releases
+- → Install to `~/.local/bin/start-cli`
+- → Update your shell configuration for PATH
+- → Verify the installation
+
+### Manual Installation
+
+If you prefer manual installation, download the appropriate binary from the [Releases](https://github.com/Start9Labs/start-cli/releases) page, then extract the archive, set executable permissions, and copy it to a directory in your PATH.
+
 ---
 
 ## 🔄 Release Workflow
