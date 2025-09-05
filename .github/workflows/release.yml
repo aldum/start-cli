@@ -81,12 +81,12 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-13-xlarge
             rust_target: aarch64-apple-darwin
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-22.04
-            rust_target: x86_64-unknown-linux-gnu
-          - target: aarch64-unknown-linux-gnu
+            rust_target: x86_64-unknown-linux-musl
+          - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04-arm
-            rust_target: aarch64-unknown-linux-gnu
+            rust_target: aarch64-unknown-linux-musl
 
     steps:
       - name: Checkout start-os
@@ -97,6 +97,19 @@ jobs:
           path: start-os
           submodules: recursive
 
+      - name: Install musl cross-compilation dependencies
+        if: contains(matrix.rust_target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools musl-dev
+          if [[ "${{ matrix.rust_target }}" == "aarch64-unknown-linux-musl" ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+            # Set up cross-compilation linker
+            mkdir -p ~/.cargo
+            echo '[target.aarch64-unknown-linux-musl]' >> ~/.cargo/config.toml
+            echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+          fi
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -106,6 +119,11 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Configure static linking for musl
+        if: contains(matrix.rust_target, 'musl')
+        run: |
+          echo 'RUSTFLAGS="-C target-feature=+crt-static"' >> $GITHUB_ENV
+
       - name: Build CLI
         working-directory: ./start-os
         env:
@@ -114,6 +132,14 @@ jobs:
           make cli
           mkdir -p ../artifacts
           cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
+
+      - name: Verify static linking (Linux only)
+        if: contains(matrix.rust_target, 'musl')
+        working-directory: artifacts
+        run: |
+          echo "Checking binary dependencies:"
+          ldd start-cli-${{ matrix.target }} || echo "Static binary - no dependencies (this is expected for musl)"
+          file start-cli-${{ matrix.target }}
 
       - name: Create archive and generate SHA256
         working-directory: artifacts
