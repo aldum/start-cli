@@ -119,15 +119,11 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Configure static linking for musl
-        if: contains(matrix.rust_target, 'musl')
-        run: |
-          echo 'RUSTFLAGS="-C target-feature=+crt-static"' >> $GITHUB_ENV
-
       - name: Build CLI
         working-directory: ./start-os
         env:
           ARCH: ${{ matrix.rust_target }}
+          RUSTFLAGS: ${{ contains(matrix.rust_target, 'musl') && '-Ctarget-feature=+crt-static' || '' }}
         run: |
           make cli
           mkdir -p ../artifacts
