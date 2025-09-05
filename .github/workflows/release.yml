@@ -104,10 +104,6 @@ jobs:
           sudo apt-get install -y musl-tools musl-dev
           if [[ "${{ matrix.rust_target }}" == "aarch64-unknown-linux-musl" ]]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu
-            # Set up cross-compilation linker
-            mkdir -p ~/.cargo
-            echo '[target.aarch64-unknown-linux-musl]' >> ~/.cargo/config.toml
-            echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
           fi
 
       - name: Setup Rust toolchain
@@ -119,22 +115,31 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Configure cross-compilation linker
+        if: contains(matrix.rust_target, 'musl')
+        run: |
+          mkdir -p ~/.cargo
+          if [[ "${{ matrix.rust_target }}" == "aarch64-unknown-linux-musl" ]]; then
+            echo '[target.aarch64-unknown-linux-musl]' >> ~/.cargo/config.toml
+            echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+          fi
+
       - name: Build CLI
         working-directory: ./start-os
         env:
           ARCH: ${{ matrix.rust_target }}
-          RUSTFLAGS: ${{ contains(matrix.rust_target, 'musl') && '-Ctarget-feature=+crt-static' || '' }}
+          # Remove RUSTFLAGS to avoid proc-macro conflicts
         run: |
           make cli
           mkdir -p ../artifacts
           cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
-
-      - name: Verify static linking (Linux only)
+      
+      - name: Verify binary (Linux only)
         if: contains(matrix.rust_target, 'musl')
         working-directory: artifacts
         run: |
           echo "Checking binary dependencies:"
-          ldd start-cli-${{ matrix.target }} || echo "Static binary - no dependencies (this is expected for musl)"
+          ldd start-cli-${{ matrix.target }} || echo "Static or minimal dependencies (expected for musl)"
           file start-cli-${{ matrix.target }}
 
       - name: Create archive and generate SHA256
