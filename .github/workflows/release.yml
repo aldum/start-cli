@@ -179,12 +179,19 @@ jobs:
           # Verify musl binaries are actually static
           if [[ "${{ matrix.rust_target }}" == *"musl"* ]]; then
             echo "🔍 Verifying musl binary is statically linked..."
-            if ldd "$BIN" 2>&1 | grep -q "not a dynamic executable"; then
+            LDD_OUTPUT=$(ldd "$BIN" 2>&1 || true)
+            echo "ldd output: $LDD_OUTPUT"
+            
+            if [[ "$LDD_OUTPUT" == *"not a dynamic executable"* ]] || [[ "$LDD_OUTPUT" == *"statically linked"* ]]; then
               echo "✅ Binary is statically linked (musl)"
             else
               echo "⚠️ WARNING: Binary appears to be dynamically linked!"
-              ldd "$BIN" || true
+              echo "$LDD_OUTPUT"
             fi
+            
+            # Alternative check using file command
+            echo "File command output:"
+            file "$BIN"
           fi
 
           # Copy and strip binary
