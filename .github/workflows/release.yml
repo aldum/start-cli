@@ -78,38 +78,17 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-13-large
             rust_target: x86_64-apple-darwin
-            use_alpine: false
-            use_apt: false
           - target: aarch64-apple-darwin
             os: macos-13-xlarge
             rust_target: aarch64-apple-darwin
-            use_alpine: false
-            use_apt: false
           - target: x86_64-unknown-linux-musl
             os: ubuntu-22.04
             rust_target: x86_64-unknown-linux-musl
-            use_alpine: true
-            use_apt: false
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04-arm
             rust_target: aarch64-unknown-linux-musl
-            use_alpine: false
-            use_apt: true
-
-    container: ${{ matrix.use_alpine && 'alpine:latest' || '' }}
 
     steps:
-      - name: Install build deps (Alpine only)
-        if: matrix.use_alpine
-        run: |
-          apk add --no-cache build-base musl-dev openssl-dev git make curl bash perl
-
-      - name: Install build deps (Ubuntu ARM only)
-        if: matrix.use_apt
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl musl-dev musl-tools build-essential git make curl bash
-
       - name: Checkout start-os
         uses: actions/checkout@v4
         with:
@@ -127,7 +106,23 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Build CLI
+      - name: Install cross for musl targets
+        if: contains(matrix.rust_target, 'musl')
+        run: cargo install cross
+
+      - name: Build CLI using Makefile and install-cli.sh (musl, static)
+        if: contains(matrix.rust_target, 'musl')
+        working-directory: ./start-os/core
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          ln -sf $(which cross) ./cargo
+          # Ensure "cargo" is used, so install-cli.sh invokes cross instead!
+          PATH=".:$PATH" ./install-cli.sh
+          mkdir -p ../../artifacts
+          cp ~/.cargo/bin/start-cli ../../artifacts/start-cli-${{ matrix.target }}
+
+      - name: Build CLI using Makefile and install-cli.sh (native, non-musl)
+        if: "!contains(matrix.rust_target, 'musl')"
         working-directory: ./start-os
         env:
           ARCH: ${{ matrix.rust_target }}
