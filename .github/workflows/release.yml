@@ -123,14 +123,14 @@ jobs:
           sudo chmod +x /usr/local/bin/zig
           cargo install cargo-zigbuild
 
-      - name: Build CLI using build-cli.sh (musl, static)
+      - name: Build CLI using Makefile (musl, static)
         if: contains(matrix.target, 'linux-musl')
-        working-directory: ./start-os/core
+        working-directory: ./start-os
         env:
           ARCH: ${{ matrix.arch_env }}
         run: |
-          bash ./build-cli.sh
-          ls -lh target/*/release/start-cli
+          make cli
+          ls -lh core/target/*/release/start-cli
 
       - name: Copy musl CLI to root artifacts
         if: contains(matrix.target, 'linux-musl')
