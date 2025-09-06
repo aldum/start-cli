@@ -95,13 +95,10 @@ jobs:
     container: ${{ matrix.use_alpine && 'alpine:latest' || '' }}
 
     steps:
-      - name: Install musl cross-compilation dependencies (Alpine only)
+      - name: Install build deps (Alpine only)
         if: matrix.use_alpine
         run: |
           apk add --no-cache build-base musl-dev openssl-dev git make curl bash
-          if [ "${{ matrix.rust_target }}" = "aarch64-unknown-linux-musl" ]; then
-            apk add --no-cache gcc-aarch64-linux-musl
-          fi
 
       - name: Checkout start-os
         uses: actions/checkout@v4
@@ -120,13 +117,6 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Configure cross-compilation linker
-        if: matrix.rust_target == 'aarch64-unknown-linux-musl'
-        run: |
-          mkdir -p ~/.cargo
-          echo '[target.aarch64-unknown-linux-musl]' >> ~/.cargo/config.toml
-          echo 'linker = "aarch64-linux-musl-gcc"' >> ~/.cargo/config.toml
-
       - name: Build CLI
         working-directory: ./start-os
         env:
@@ -135,7 +125,7 @@ jobs:
           make cli
           mkdir -p ../artifacts
           cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
-      
+
       - name: Verify binary (Linux only)
         if: contains(matrix.rust_target, 'musl')
         working-directory: artifacts
