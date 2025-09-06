@@ -108,7 +108,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      # -------- Linux musl builds (zig/zigbuild) --------
+      # --- Install zig and cargo-zigbuild for all Linux musl ---
       - name: Install zig and cargo-zigbuild for musl targets
         if: contains(matrix.target, 'linux-musl')
         run: |
@@ -123,40 +123,31 @@ jobs:
           sudo chmod +x /usr/local/bin/zig
           cargo install cargo-zigbuild
 
-      - name: Build CLI using Makefile (musl, static)
-        if: contains(matrix.target, 'linux-musl')
+      # --- Canonical build step: make cli for ALL targets ---
+      - name: Build CLI
         working-directory: ./start-os
         env:
           ARCH: ${{ matrix.arch_env }}
         run: |
           make cli
-          ls -lh core/target/*/release/start-cli
 
-      - name: Copy musl CLI to root artifacts
-        if: contains(matrix.target, 'linux-musl')
-        working-directory: ./start-os/core
+      # --- Copy built binary to artifacts (all platforms unified) ---
+      - name: Copy CLI to root artifacts
+        working-directory: ${{ github.workspace }}
         run: |
-          mkdir -p ../../../artifacts
-          cp target/${{ matrix.arch_env }}-unknown-linux-musl/release/start-cli ../../../artifacts/start-cli-${{ matrix.target }}
+          mkdir -p artifacts
+          cp ~/.cargo/bin/start-cli artifacts/start-cli-${{ matrix.target }}
 
+      # --- Verify musl binary ---
       - name: Verify binary (Linux musl only)
         if: contains(matrix.target, 'linux-musl')
-        working-directory: ../../../artifacts
+        working-directory: artifacts
         run: |
           echo "Checking binary dependencies:"
           ldd start-cli-${{ matrix.target }} || echo "Static or minimal dependencies (expected for musl)"
           file start-cli-${{ matrix.target }}
 
-      - name: Build CLI using Makefile and install-cli.sh (native, non-musl)
-        if: "!contains(matrix.target, 'linux-musl')"
-        working-directory: ./start-os
-        env:
-          ARCH: ${{ matrix.rust_target }}
-        run: |
-          make cli
-          mkdir -p ../artifacts
-          cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
-
+      # --- Archive + SHA (unified for all) ---
       - name: Create archive and generate SHA256
         working-directory: artifacts
         run: |
