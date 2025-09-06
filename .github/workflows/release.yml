@@ -102,7 +102,7 @@ jobs:
       - name: Install build deps (Alpine only)
         if: matrix.use_alpine
         run: |
-          apk add --no-cache build-base musl-dev openssl-dev git make curl bash
+          apk add --no-cache build-base musl-dev openssl-dev git make curl bash perl
 
       - name: Install build deps (Ubuntu ARM only)
         if: matrix.use_apt
