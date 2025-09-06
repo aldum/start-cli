@@ -78,17 +78,31 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-13-large
             rust_target: x86_64-apple-darwin
+            use_alpine: false
           - target: aarch64-apple-darwin
             os: macos-13-xlarge
             rust_target: aarch64-apple-darwin
+            use_alpine: false
           - target: x86_64-unknown-linux-musl
             os: ubuntu-22.04
             rust_target: x86_64-unknown-linux-musl
+            use_alpine: true
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04-arm
             rust_target: aarch64-unknown-linux-musl
+            use_alpine: true
+
+    container: ${{ matrix.use_alpine && 'alpine:latest' || '' }}
 
     steps:
+      - name: Install musl cross-compilation dependencies (Alpine only)
+        if: matrix.use_alpine
+        run: |
+          apk add --no-cache build-base musl-dev openssl-dev git make curl bash
+          if [ "${{ matrix.rust_target }}" = "aarch64-unknown-linux-musl" ]; then
+            apk add --no-cache gcc-aarch64-linux-musl
+          fi
+
       - name: Checkout start-os
         uses: actions/checkout@v4
         with:
@@ -96,15 +110,6 @@ jobs:
           ref: next/major
           path: start-os
           submodules: recursive
-
-      - name: Install musl cross-compilation dependencies
-        if: contains(matrix.rust_target, 'musl')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools musl-dev
-          if [[ "${{ matrix.rust_target }}" == "aarch64-unknown-linux-musl" ]]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-          fi
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -116,19 +121,16 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Configure cross-compilation linker
-        if: contains(matrix.rust_target, 'musl')
+        if: matrix.rust_target == 'aarch64-unknown-linux-musl'
         run: |
           mkdir -p ~/.cargo
-          if [[ "${{ matrix.rust_target }}" == "aarch64-unknown-linux-musl" ]]; then
-            echo '[target.aarch64-unknown-linux-musl]' >> ~/.cargo/config.toml
-            echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
-          fi
+          echo '[target.aarch64-unknown-linux-musl]' >> ~/.cargo/config.toml
+          echo 'linker = "aarch64-linux-musl-gcc"' >> ~/.cargo/config.toml
 
       - name: Build CLI
         working-directory: ./start-os
         env:
           ARCH: ${{ matrix.rust_target }}
-          # Remove RUSTFLAGS to avoid proc-macro conflicts
         run: |
           make cli
           mkdir -p ../artifacts
