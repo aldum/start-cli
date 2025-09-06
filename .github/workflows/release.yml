@@ -125,6 +125,15 @@ jobs:
         with:
           tool: cargo-zigbuild
 
+      - name: Hotfix build-cli.sh (typo do -> then)
+        if: contains(matrix.rust_target, 'linux-musl')
+        working-directory: ${{ env.UPSTREAM_DIR }}
+        run: |
+          # Patch the known typo to avoid syntax error
+          sed -i 's/]; do/]; then/' core/build-cli.sh
+          # Sanity check the script parses
+          bash -n core/build-cli.sh
+
       - name: Build start-cli (Linux MUSL via build-cli.sh)
         if: contains(matrix.rust_target, 'linux-musl')
         working-directory: ${{ env.UPSTREAM_DIR }}
