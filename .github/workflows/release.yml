@@ -148,7 +148,11 @@ jobs:
         working-directory: artifacts
         run: |
           tar -czf start-cli-${{ matrix.target }}.tar.gz start-cli-${{ matrix.target }}
-          shasum -a 256 start-cli-${{ matrix.target }}.tar.gz > start-cli-${{ matrix.target }}.tar.gz.sha256
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum start-cli-${{ matrix.target }}.tar.gz > start-cli-${{ matrix.target }}.tar.gz.sha256
+          else
+            shasum -a 256 start-cli-${{ matrix.target }}.tar.gz > start-cli-${{ matrix.target }}.tar.gz.sha256
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
