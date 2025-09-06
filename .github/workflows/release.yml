@@ -10,69 +10,50 @@ permissions:
   contents: write
   actions: read
 
+env:
+  CARGO_TERM_COLOR: always
+  UPSTREAM_REPO: Start9Labs/start-os
+  UPSTREAM_REF: next/major
+  UPSTREAM_DIR: start-os
+
 jobs:
   prepare:
     name: Prepare Release
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.get-version.outputs.version }}
-      tag_exists: ${{ steps.check-tag.outputs.exists }}
-      tag_name: ${{ steps.get-tag.outputs.tag_name }}
+      tag_name: ${{ steps.set.outputs.tag_name }}
+      should_release: ${{ steps.set.outputs.should_release }}
+      prerelease: ${{ steps.set.outputs.prerelease }}
     steps:
-      - name: Checkout start-os
-        uses: actions/checkout@v4
-        with:
-          repository: start9labs/start-os
-          ref: next/major
-          path: start-os
-          submodules: recursive
-
-      - name: Extract version from Cargo.toml
-        id: get-version
+      - id: set
+        shell: bash
         run: |
-          VERSION=$(grep -m 1 'version = ' ./start-os/core/startos/Cargo.toml | sed 's/version = "\(.*\)".*/\1/')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION"
+          TAG=""
+          PRERELEASE=false
+          SHOULD=false
 
-      - name: Determine tag name
-        id: get-tag
-        run: |
-          TAG_NAME="v${{ steps.get-version.outputs.version }}"
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Tag name: $TAG_NAME"
-
-      - name: Check if tag exists
-        id: check-tag
-        run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag exists (triggered by tag push)"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag_name }}" ]]; then
+            TAG="${{ inputs.tag_name }}"
+            SHOULD=true
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+            SHOULD=true
           else
-            if git ls-remote --tags https://github.com/${{ github.repository }} | grep -q "refs/tags/${{ steps.get-tag.outputs.tag_name }}"; then
-              echo "exists=true" >> $GITHUB_OUTPUT
-              echo "Tag already exists in repository"
-            else
-              echo "exists=false" >> $GITHUB_OUTPUT
-              echo "Tag does not exist yet"
-            fi
+            # CI artifacts only (no GitHub Release). Flip SHOULD=true to publish nightlies if desired.
+            PRERELEASE=true
+            SHOULD=false
           fi
 
-      - name: Create tag if needed
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.check-tag.outputs.exists == 'false' }}
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} repo
-          cd repo
-          git tag ${{ steps.get-tag.outputs.tag_name }}
-          git push origin ${{ steps.get-tag.outputs.tag_name }}
-          echo "Created tag: ${{ steps.get-tag.outputs.tag_name }}"
+          echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+          echo "should_release=$SHOULD" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.target }}
     needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-apple-darwin
@@ -94,69 +75,95 @@ jobs:
       - name: Checkout start-os
         uses: actions/checkout@v4
         with:
-          repository: start9labs/start-os
-          ref: next/major
-          path: start-os
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ env.UPSTREAM_REF }}
+          fetch-depth: 0
           submodules: recursive
+          path: ${{ env.UPSTREAM_DIR }}
 
-      - name: Setup Rust toolchain
+      - name: Show upstream commit
+        run: |
+          git -C "$UPSTREAM_DIR" rev-parse HEAD
+          git -C "$UPSTREAM_DIR" submodule status
+
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           targets: ${{ matrix.rust_target }}
 
-      - name: Cache Rust dependencies
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.rust_target }}
+
+      - name: Cache cargo/target
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            ${{ env.UPSTREAM_DIR }}/core
+          shared-key: ${{ matrix.rust_target }}
+          cache-on-failure: true
 
-      # --- Install zig and cargo-zigbuild for all Linux musl ---
-      - name: Install zig and cargo-zigbuild for musl targets
-        if: contains(matrix.target, 'linux-musl')
-        run: |
-          if [ "$(uname -m)" = "aarch64" ]; then
-            ZIG_ARCH=zig-aarch64-linux-0.15.1
-          else
-            ZIG_ARCH=zig-x86_64-linux-0.15.1
-          fi
-          curl -LO https://ziglang.org/download/0.15.1/$ZIG_ARCH.tar.xz
-          tar -xJf $ZIG_ARCH.tar.xz
-          sudo mv $ZIG_ARCH/zig /usr/local/bin/zig
-          sudo chmod +x /usr/local/bin/zig
-          cargo install cargo-zigbuild
-
-      # --- Canonical build step: make cli for ALL targets ---
-      - name: Build CLI
-        working-directory: ./start-os
+      # macOS: build via Makefile (install-cli.sh)
+      - name: Build start-cli (macOS via make)
+        if: contains(matrix.rust_target, 'apple-darwin')
+        working-directory: ${{ env.UPSTREAM_DIR }}
         env:
+          # If cross-compiling ever becomes necessary, you can also set:
+          # CARGO_BUILD_TARGET: ${{ matrix.rust_target }}
+          PLATFORM: ${{ startsWith(matrix.rust_target, 'aarch64') && 'aarch64' || 'x86_64' }}
+        run: make cli
+
+      # Linux: build via upstream build-cli.sh to ensure MUSL
+      - name: Install zig (Linux musl only)
+        if: contains(matrix.rust_target, 'linux-musl')
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.12.0
+
+      - name: Install cargo-zigbuild (Linux musl only)
+        if: contains(matrix.rust_target, 'linux-musl')
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - name: Build start-cli (Linux MUSL via build-cli.sh)
+        if: contains(matrix.rust_target, 'linux-musl')
+        working-directory: ${{ env.UPSTREAM_DIR }}
+        env:
+          ENVIRONMENT: docker-registry
           ARCH: ${{ matrix.arch_env }}
-        run: |
-          make cli
+          TARGET: ${{ matrix.rust_target }}
+          ENFORCE_USE_DOCKER: "0"
+        run: ./core/build-cli.sh
 
-      # --- Copy built binary to artifacts (all platforms unified) ---
-      - name: Copy CLI to root artifacts
-        working-directory: ${{ github.workspace }}
+      - name: Package artifact
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts
-          cp ~/.cargo/bin/start-cli artifacts/start-cli-${{ matrix.target }}
 
-      # --- Verify musl binary ---
-      - name: Verify binary (Linux musl only)
-        if: contains(matrix.target, 'linux-musl')
-        working-directory: artifacts
-        run: |
-          echo "Checking binary dependencies:"
-          ldd start-cli-${{ matrix.target }} || echo "Static or minimal dependencies (expected for musl)"
-          file start-cli-${{ matrix.target }}
-
-      # --- Archive + SHA (unified for all) ---
-      - name: Create archive and generate SHA256
-        working-directory: artifacts
-        run: |
-          tar -czf start-cli-${{ matrix.target }}.tar.gz start-cli-${{ matrix.target }}
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum start-cli-${{ matrix.target }}.tar.gz > start-cli-${{ matrix.target }}.tar.gz.sha256
+          if [[ "${{ matrix.rust_target }}" == *apple-darwin* ]]; then
+            BIN="$HOME/.cargo/bin/start-cli"
           else
-            shasum -a 256 start-cli-${{ matrix.target }}.tar.gz > start-cli-${{ matrix.target }}.tar.gz.sha256
+            BIN="${UPSTREAM_DIR}/core/target/${{ matrix.rust_target }}/release/start-cli"
           fi
+
+          if [[ ! -f "$BIN" ]]; then
+            echo "Binary not found at $BIN"
+            exit 1
+          fi
+
+          OUT="artifacts/start-cli-${{ matrix.target }}"
+          cp "$BIN" "$OUT"
+          (strip "$OUT" || llvm-strip "$OUT" || true) 2>/dev/null || true
+
+          pushd artifacts >/dev/null
+          tar -czf "start-cli-${{ matrix.target }}.tar.gz" "start-cli-${{ matrix.target }}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "start-cli-${{ matrix.target }}.tar.gz" > "start-cli-${{ matrix.target }}.tar.gz.sha256"
+          else
+            shasum -a 256 "start-cli-${{ matrix.target }}.tar.gz" > "start-cli-${{ matrix.target }}.tar.gz.sha256"
+          fi
+          popd >/dev/null
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -168,7 +175,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: [prepare, build]
-
+    if: needs.prepare.outputs.should_release == 'true'
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -188,14 +195,21 @@ jobs:
 
       - name: Generate release notes
         working-directory: release-binaries
+        env:
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          UPSTREAM_REPO: ${{ env.UPSTREAM_REPO }}
+          UPSTREAM_REF: ${{ env.UPSTREAM_REF }}
         run: |
-          TAG_NAME="${{ needs.prepare.outputs.tag_name }}"
-          echo "## Start CLI $TAG_NAME" > release-notes.txt
-          echo "" >> release-notes.txt
-          echo "### SHA256 Checksums" >> release-notes.txt
-          echo '```' >> release-notes.txt
-          cat sha256sums.txt >> release-notes.txt
-          echo '```' >> release-notes.txt
+          {
+            echo "## Start CLI $TAG_NAME"
+            echo ""
+            echo "Built from upstream repository: ${UPSTREAM_REPO} @ ${UPSTREAM_REF}"
+            echo ""
+            echo "### SHA256 Checksums"
+            echo '```'
+            cat sha256sums.txt
+            echo '```'
+          } > release-notes.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -206,6 +220,7 @@ jobs:
           name: Start CLI ${{ needs.prepare.outputs.tag_name }}
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           body_path: release-binaries/release-notes.txt
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
