@@ -83,9 +83,11 @@ jobs:
             rust_target: aarch64-apple-darwin
           - target: x86_64-unknown-linux-musl
             os: ubuntu-22.04
+            arch_env: x86_64
             rust_target: x86_64-unknown-linux-musl
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04-arm
+            arch_env: aarch64
             rust_target: aarch64-unknown-linux-musl
 
     steps:
@@ -106,23 +108,41 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cross for musl targets
-        if: contains(matrix.rust_target, 'musl')
-        run: cargo install cross
+      # -------- Linux musl builds (zig/zigbuild) --------
+      - name: Install zig and cargo-zigbuild for musl targets
+        if: contains(matrix.target, 'linux-musl')
+        run: |
+          curl -L https://github.com/ziglang/zig/releases/download/0.12.0/zig-linux-x86_64-0.12.0.tar.xz | tar -xJ
+          sudo mv zig-linux-x86_64-0.12.0/zig /usr/local/bin/zig
+          sudo chmod +x /usr/local/bin/zig
+          cargo install cargo-zigbuild
 
-      - name: Build CLI using Makefile and install-cli.sh (musl, static)
-        if: contains(matrix.rust_target, 'musl')
+      - name: Build CLI using build-cli.sh (musl, static)
+        if: contains(matrix.target, 'linux-musl')
+        working-directory: ./start-os/core
+        env:
+          ARCH: ${{ matrix.arch_env }}
+        run: |
+          bash ./build-cli.sh
+          ls -lh target/*/release/start-cli
+
+      - name: Copy musl CLI to root artifacts
+        if: contains(matrix.target, 'linux-musl')
         working-directory: ./start-os/core
         run: |
-          export PATH="$HOME/.cargo/bin:$PATH"
-          ln -sf $(which cross) ./cargo
-          # Ensure "cargo" is used, so install-cli.sh invokes cross instead!
-          PATH=".:$PATH" ./install-cli.sh
-          mkdir -p ../../artifacts
-          cp ~/.cargo/bin/start-cli ../../artifacts/start-cli-${{ matrix.target }}
+          mkdir -p ../../../artifacts
+          cp target/${{ matrix.arch_env }}-unknown-linux-musl/release/start-cli ../../../artifacts/start-cli-${{ matrix.target }}
+
+      - name: Verify binary (Linux musl only)
+        if: contains(matrix.target, 'linux-musl')
+        working-directory: ../../../artifacts
+        run: |
+          echo "Checking binary dependencies:"
+          ldd start-cli-${{ matrix.target }} || echo "Static or minimal dependencies (expected for musl)"
+          file start-cli-${{ matrix.target }}
 
       - name: Build CLI using Makefile and install-cli.sh (native, non-musl)
-        if: "!contains(matrix.rust_target, 'musl')"
+        if: "!contains(matrix.target, 'linux-musl')"
         working-directory: ./start-os
         env:
           ARCH: ${{ matrix.rust_target }}
@@ -130,14 +150,6 @@ jobs:
           make cli
           mkdir -p ../artifacts
           cp ~/.cargo/bin/start-cli ../artifacts/start-cli-${{ matrix.target }}
-
-      - name: Verify binary (Linux only)
-        if: contains(matrix.rust_target, 'musl')
-        working-directory: artifacts
-        run: |
-          echo "Checking binary dependencies:"
-          ldd start-cli-${{ matrix.target }} || echo "Static or minimal dependencies (expected for musl)"
-          file start-cli-${{ matrix.target }}
 
       - name: Create archive and generate SHA256
         working-directory: artifacts
