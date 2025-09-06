@@ -79,18 +79,22 @@ jobs:
             os: macos-13-large
             rust_target: x86_64-apple-darwin
             use_alpine: false
+            use_apt: false
           - target: aarch64-apple-darwin
             os: macos-13-xlarge
             rust_target: aarch64-apple-darwin
             use_alpine: false
+            use_apt: false
           - target: x86_64-unknown-linux-musl
             os: ubuntu-22.04
             rust_target: x86_64-unknown-linux-musl
             use_alpine: true
+            use_apt: false
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04-arm
             rust_target: aarch64-unknown-linux-musl
-            use_alpine: true
+            use_alpine: false
+            use_apt: true
 
     container: ${{ matrix.use_alpine && 'alpine:latest' || '' }}
 
@@ -99,6 +103,12 @@ jobs:
         if: matrix.use_alpine
         run: |
           apk add --no-cache build-base musl-dev openssl-dev git make curl bash
+
+      - name: Install build deps (Ubuntu ARM only)
+        if: matrix.use_apt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl musl-dev musl-tools build-essential git make curl bash
 
       - name: Checkout start-os
         uses: actions/checkout@v4
