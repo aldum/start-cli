@@ -112,8 +112,15 @@ jobs:
       - name: Install zig and cargo-zigbuild for musl targets
         if: contains(matrix.target, 'linux-musl')
         run: |
-          sudo apt-get update
-          sudo apt-get install -y zig
+          if [ "$(uname -m)" = "aarch64" ]; then
+            ZIG_ARCH=zig-aarch64-linux-0.15.1
+          else
+            ZIG_ARCH=zig-x86_64-linux-0.15.1
+          fi
+          curl -LO https://ziglang.org/download/0.15.1/$ZIG_ARCH.tar.xz
+          tar -xJf $ZIG_ARCH.tar.xz
+          sudo mv $ZIG_ARCH/zig /usr/local/bin/zig
+          sudo chmod +x /usr/local/bin/zig
           cargo install cargo-zigbuild
 
       - name: Build CLI using build-cli.sh (musl, static)
