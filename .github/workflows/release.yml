@@ -1,10 +1,15 @@
-name: Cross-Platform CLI Builder
+name: Build and Release start-cli
 
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release version (e.g., v0.4.0-alpha.9)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -14,7 +19,6 @@ env:
   CARGO_TERM_COLOR: always
   UPSTREAM_REPO: Start9Labs/start-os
   UPSTREAM_REF: next/major
-  UPSTREAM_DIR: start-os
 
 jobs:
   prepare:
@@ -23,30 +27,29 @@ jobs:
     outputs:
       tag_name: ${{ steps.set.outputs.tag_name }}
       should_release: ${{ steps.set.outputs.should_release }}
-      prerelease: ${{ steps.set.outputs.prerelease }}
     steps:
       - id: set
+        name: Determine release parameters
         shell: bash
         run: |
           TAG=""
-          PRERELEASE=false
-          SHOULD=false
+          SHOULD_RELEASE=false
 
+          # Priority: workflow input > git tag > nothing
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag_name }}" ]]; then
             TAG="${{ inputs.tag_name }}"
-            SHOULD=true
+            SHOULD_RELEASE=true
+            echo "📦 Manual release triggered for: $TAG"
           elif [[ "${{ github.ref_type }}" == "tag" ]]; then
             TAG="${{ github.ref_name }}"
-            SHOULD=true
+            SHOULD_RELEASE=true
+            echo "🏷️ Tag push detected: $TAG"
           else
-            # CI artifacts only (no GitHub Release). Flip SHOULD=true to publish nightlies if desired.
-            PRERELEASE=true
-            SHOULD=false
+            echo "⚠️ No release will be created (no tag or manual input)"
           fi
 
           echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
-          echo "should_release=$SHOULD" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.target }}
@@ -59,174 +62,222 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-13-large
             rust_target: x86_64-apple-darwin
+            build_method: make
           - target: aarch64-apple-darwin
             os: macos-13-xlarge
             rust_target: aarch64-apple-darwin
+            build_method: make
           - target: x86_64-unknown-linux-musl
             os: ubuntu-22.04
             arch_env: x86_64
             rust_target: x86_64-unknown-linux-musl
+            build_method: zigbuild
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04-arm
             arch_env: aarch64
             rust_target: aarch64-unknown-linux-musl
+            build_method: zigbuild
 
     steps:
-      - name: Checkout start-os
+      - name: 📥 Checkout start-os repository
         uses: actions/checkout@v4
         with:
           repository: ${{ env.UPSTREAM_REPO }}
           ref: ${{ env.UPSTREAM_REF }}
           fetch-depth: 0
           submodules: recursive
-          path: ${{ env.UPSTREAM_DIR }}
+          path: start-os
 
-      - name: Show upstream commit
+      - name: 🔍 Show upstream commit
         run: |
-          git -C "$UPSTREAM_DIR" rev-parse HEAD
-          git -C "$UPSTREAM_DIR" submodule status
+          echo "Building from commit:"
+          git -C start-os rev-parse HEAD
+          echo ""
+          echo "Submodules:"
+          git -C start-os submodule status
 
-      - name: Generate GIT_HASH.txt
-        working-directory: ${{ env.UPSTREAM_DIR }}
+      - name: 📝 Generate GIT_HASH.txt (required by build)
+        working-directory: start-os
         run: |
           git rev-parse HEAD > GIT_HASH.txt
-          echo "GIT_HASH=$(cat GIT_HASH.txt)"
+          echo "GIT_HASH: $(cat GIT_HASH.txt)"
 
-      - name: Install Rust
+      - name: 🦀 Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: Add Rust target
-        run: rustup target add ${{ matrix.rust_target }}
-
-      - name: Cache cargo/target
+      - name: 💾 Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            ${{ env.UPSTREAM_DIR }}/core
+          workspaces: start-os/core
           shared-key: ${{ matrix.rust_target }}
           cache-on-failure: true
 
-      # macOS: build via Makefile (install-cli.sh)
-      - name: Build start-cli (macOS via make)
-        if: contains(matrix.rust_target, 'apple-darwin')
-        working-directory: ${{ env.UPSTREAM_DIR }}
+      # macOS builds use standard cargo via Makefile
+      - name: 🍎 Build start-cli (macOS)
+        if: matrix.build_method == 'make'
+        working-directory: start-os
         env:
-          # If cross-compiling ever becomes necessary, you can also set:
-          # CARGO_BUILD_TARGET: ${{ matrix.rust_target }}
           PLATFORM: ${{ startsWith(matrix.rust_target, 'aarch64') && 'aarch64' || 'x86_64' }}
-        run: make cli
+        run: |
+          echo "Building using Makefile (cargo install)..."
+          make cli
 
-      # Linux: build via upstream build-cli.sh to ensure MUSL
-      - name: Install zig (Linux musl only)
-        if: contains(matrix.rust_target, 'linux-musl')
+      # Linux builds use zigbuild for proper musl linking
+      - name: 🔧 Install Zig toolchain (Linux musl)
+        if: matrix.build_method == 'zigbuild'
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.12.0
 
-      - name: Install cargo-zigbuild (Linux musl only)
-        if: contains(matrix.rust_target, 'linux-musl')
+      - name: 🔧 Install cargo-zigbuild (Linux musl)
+        if: matrix.build_method == 'zigbuild'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-zigbuild
 
-      - name: Hotfix build-cli.sh (typo do -> then)
-        if: contains(matrix.rust_target, 'linux-musl')
-        working-directory: ${{ env.UPSTREAM_DIR }}
+      - name: 🩹 Fix build-cli.sh syntax error
+        if: matrix.build_method == 'zigbuild'
+        working-directory: start-os
         run: |
-          # Patch the known typo to avoid syntax error
+          # Fix known typo: 'do' should be 'then'
           sed -i 's/]; do/]; then/' core/build-cli.sh
-          # Sanity check the script parses
+          # Verify script syntax
           bash -n core/build-cli.sh
 
-      - name: Build start-cli (Linux MUSL via build-cli.sh)
-        if: contains(matrix.rust_target, 'linux-musl')
-        working-directory: ${{ env.UPSTREAM_DIR }}
+      - name: 🐧 Build start-cli (Linux musl)
+        if: matrix.build_method == 'zigbuild'
+        working-directory: start-os
         env:
           ENVIRONMENT: docker-registry
           ARCH: ${{ matrix.arch_env }}
           TARGET: ${{ matrix.rust_target }}
           ENFORCE_USE_DOCKER: "0"
-        run: ./core/build-cli.sh
+        run: |
+          echo "Building using cargo-zigbuild for static musl binary..."
+          ./core/build-cli.sh
 
-      - name: Package artifact
+      - name: 📦 Package and verify binary
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts
 
-          if [[ "${{ matrix.rust_target }}" == *apple-darwin* ]]; then
+          # Find the built binary
+          if [[ "${{ matrix.build_method }}" == "make" ]]; then
             BIN="$HOME/.cargo/bin/start-cli"
           else
-            BIN="${UPSTREAM_DIR}/core/target/${{ matrix.rust_target }}/release/start-cli"
+            BIN="start-os/core/target/${{ matrix.rust_target }}/release/start-cli"
           fi
 
           if [[ ! -f "$BIN" ]]; then
-            echo "Binary not found at $BIN"
+            echo "❌ Binary not found at: $BIN"
             exit 1
           fi
 
+          # Verify musl binaries are actually static
+          if [[ "${{ matrix.rust_target }}" == *"musl"* ]]; then
+            echo "🔍 Verifying musl binary is statically linked..."
+            if ldd "$BIN" 2>&1 | grep -q "not a dynamic executable"; then
+              echo "✅ Binary is statically linked (musl)"
+            else
+              echo "⚠️ WARNING: Binary appears to be dynamically linked!"
+              ldd "$BIN" || true
+            fi
+          fi
+
+          # Copy and strip binary
           OUT="artifacts/start-cli-${{ matrix.target }}"
           cp "$BIN" "$OUT"
+          chmod +x "$OUT"
+          
+          echo "📏 Binary size before stripping: $(du -h "$OUT" | cut -f1)"
           (strip "$OUT" || llvm-strip "$OUT" || true) 2>/dev/null || true
+          echo "📏 Binary size after stripping: $(du -h "$OUT" | cut -f1)"
 
+          # Create archive
           pushd artifacts >/dev/null
           tar -czf "start-cli-${{ matrix.target }}.tar.gz" "start-cli-${{ matrix.target }}"
+          
+          # Generate checksum
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "start-cli-${{ matrix.target }}.tar.gz" > "start-cli-${{ matrix.target }}.tar.gz.sha256"
           else
             shasum -a 256 "start-cli-${{ matrix.target }}.tar.gz" > "start-cli-${{ matrix.target }}.tar.gz.sha256"
           fi
+          
+          echo "📦 Archive created: start-cli-${{ matrix.target }}.tar.gz"
           popd >/dev/null
 
-      - name: Upload artifacts
+      - name: 📤 Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: cli-binaries-${{ matrix.target }}
           path: artifacts/
 
   release:
-    name: Create Release
+    name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [prepare, build]
     if: needs.prepare.outputs.should_release == 'true'
     steps:
-      - name: Download artifacts
+      - name: 📥 Download all artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: cli-binaries-*
           path: release-binaries
           merge-multiple: true
 
-      - name: Verify artifacts and combine checksums
+      - name: 🔍 Verify artifacts and create combined checksums
         working-directory: release-binaries
         run: |
-          echo "Downloaded binaries:"
-          ls -lh *
+          echo "📦 Downloaded binaries:"
+          ls -lh *.tar.gz
+          echo ""
+          
+          # Combine all checksums
           cat *.sha256 > sha256sums.txt
-          echo "SHA256 checksums:"
+          
+          echo "✅ SHA256 checksums:"
           cat sha256sums.txt
 
-      - name: Generate release notes
+      - name: 📝 Generate release notes
         working-directory: release-binaries
         env:
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
-          UPSTREAM_REPO: ${{ env.UPSTREAM_REPO }}
-          UPSTREAM_REF: ${{ env.UPSTREAM_REF }}
         run: |
           {
             echo "## Start CLI $TAG_NAME"
             echo ""
-            echo "Built from upstream repository: ${UPSTREAM_REPO} @ ${UPSTREAM_REF}"
+            echo "### 📦 Installation"
             echo ""
-            echo "### SHA256 Checksums"
+            echo "Download the appropriate binary for your platform and extract:"
+            echo '```sh'
+            echo 'tar -xzf start-cli-<platform>.tar.gz'
+            echo 'chmod +x start-cli-<platform>'
+            echo 'sudo mv start-cli-<platform> /usr/local/bin/start-cli'
+            echo '```'
+            echo ""
+            echo "### 🔍 Verify Download"
+            echo ""
+            echo "Compare the checksum with the values below:"
+            echo '```sh'
+            echo 'shasum -a 256 start-cli-<platform>.tar.gz'
+            echo '```'
+            echo ""
+            echo "### ✅ SHA256 Checksums"
             echo '```'
             cat sha256sums.txt
             echo '```'
+            echo ""
+            echo "### 📋 Build Information"
+            echo "- Built from: \`${{ env.UPSTREAM_REPO }}\` @ \`${{ env.UPSTREAM_REF }}\`"
+            echo "- Linux binaries: Static musl builds (no glibc dependency)"
+            echo "- macOS binaries: Native builds for Intel and Apple Silicon"
           } > release-notes.txt
 
-      - name: Create Release
+      - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -235,7 +286,8 @@ jobs:
           name: Start CLI ${{ needs.prepare.outputs.tag_name }}
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           body_path: release-binaries/release-notes.txt
-          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          draft: false
+          prerelease: ${{ contains(needs.prepare.outputs.tag_name, 'alpha') || contains(needs.prepare.outputs.tag_name, 'beta') }}
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
