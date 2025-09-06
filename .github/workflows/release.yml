@@ -86,6 +86,12 @@ jobs:
           git -C "$UPSTREAM_DIR" rev-parse HEAD
           git -C "$UPSTREAM_DIR" submodule status
 
+      - name: Generate GIT_HASH.txt
+        working-directory: ${{ env.UPSTREAM_DIR }}
+        run: |
+          git rev-parse HEAD > GIT_HASH.txt
+          echo "GIT_HASH=$(cat GIT_HASH.txt)"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
