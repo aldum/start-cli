@@ -17,8 +17,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  UPSTREAM_REPO: Start9Labs/start-os
-  UPSTREAM_REF: next/major
+  UPSTREAM_REPO: aldum/start-os
+  UPSTREAM_REF: next/edge
 
 jobs:
   prepare:
@@ -136,15 +136,6 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-zigbuild
-
-      - name: 🩹 Fix build-cli.sh syntax error
-        if: matrix.build_method == 'zigbuild'
-        working-directory: start-os
-        run: |
-          # Fix known typo: 'do' should be 'then'
-          sed -i 's/]; do/]; then/' core/build-cli.sh
-          # Verify script syntax
-          bash -n core/build-cli.sh
 
       - name: 🐧 Build start-cli (Linux musl)
         if: matrix.build_method == 'zigbuild'
