@@ -72,13 +72,19 @@ jobs:
             arch_env: x86_64
             rust_target: x86_64-unknown-linux-musl
             build_method: zigbuild
-            container_tool: ['podman', 'docker']
+            container_tool: podman
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-22.04
+            arch_env: x86_64
+            rust_target: x86_64-unknown-linux-musl
+            build_method: zigbuild
+            container_tool: docker
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04-arm
             arch_env: aarch64
             rust_target: aarch64-unknown-linux-musl
             build_method: zigbuild
-            container_tool: ['podman', 'docker']
+            container_tool: docker
 
     steps:
       - name: 📥 Checkout start-os repository
@@ -144,7 +150,7 @@ jobs:
         working-directory: start-os
         env:
           ENVIRONMENT: ${{ matrix.container_tool }}-registry
-          CTOOL: ${{ matrix.container_tool }}
+          CTOOL: ${{ startsWith(matrix.container_tool, 'podman') && 'podman' || '' }}
           ARCH: ${{ matrix.arch_env }}
           TARGET: ${{ matrix.rust_target }}
           ENFORCE_USE_DOCKER: "0"
