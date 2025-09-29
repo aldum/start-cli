@@ -149,7 +149,7 @@ jobs:
         if: matrix.build_method == 'zigbuild'
         working-directory: start-os
         env:
-          ENVIRONMENT: ${{ matrix.container_tool }}-registry
+          ENVIRONMENT: ${{ startsWith(matrix.container_tool, 'docker') && 'docker-' || '' }}registry
           CTOOL: ${{ startsWith(matrix.container_tool, 'podman') && 'podman' || '' }}
           ARCH: ${{ matrix.arch_env }}
           TARGET: ${{ matrix.rust_target }}
