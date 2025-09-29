@@ -175,14 +175,14 @@ jobs:
             echo "🔍 Verifying musl binary is statically linked..."
             LDD_OUTPUT=$(ldd "$BIN" 2>&1 || true)
             echo "ldd output: $LDD_OUTPUT"
-            
+
             if [[ "$LDD_OUTPUT" == *"not a dynamic executable"* ]] || [[ "$LDD_OUTPUT" == *"statically linked"* ]]; then
               echo "✅ Binary is statically linked (musl)"
             else
               echo "⚠️ WARNING: Binary appears to be dynamically linked!"
               echo "$LDD_OUTPUT"
             fi
-            
+
             # Alternative check using file command
             echo "File command output:"
             file "$BIN"
@@ -192,7 +192,7 @@ jobs:
           OUT="artifacts/start-cli-${{ matrix.target }}"
           cp "$BIN" "$OUT"
           chmod +x "$OUT"
-          
+
           echo "📏 Binary size before stripping: $(du -h "$OUT" | cut -f1)"
           (strip "$OUT" || llvm-strip "$OUT" || true) 2>/dev/null || true
           echo "📏 Binary size after stripping: $(du -h "$OUT" | cut -f1)"
@@ -200,14 +200,14 @@ jobs:
           # Create archive
           pushd artifacts >/dev/null
           tar -czf "start-cli-${{ matrix.target }}.tar.gz" "start-cli-${{ matrix.target }}"
-          
+
           # Generate checksum
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "start-cli-${{ matrix.target }}.tar.gz" > "start-cli-${{ matrix.target }}.tar.gz.sha256"
           else
             shasum -a 256 "start-cli-${{ matrix.target }}.tar.gz" > "start-cli-${{ matrix.target }}.tar.gz.sha256"
           fi
-          
+
           echo "📦 Archive created: start-cli-${{ matrix.target }}.tar.gz"
           popd >/dev/null
 
@@ -236,10 +236,10 @@ jobs:
           echo "📦 Downloaded binaries:"
           ls -lh *.tar.gz
           echo ""
-          
+
           # Combine all checksums
           cat *.sha256 > sha256sums.txt
-          
+
           echo "✅ SHA256 checksums:"
           cat sha256sums.txt
 
@@ -275,7 +275,7 @@ jobs:
             echo "### 📋 Build Information"
             echo "- Built from: \`${{ env.UPSTREAM_REPO }}\` @ \`${{ env.UPSTREAM_REF }}\`"
             echo "- Linux binaries: Static musl builds (no glibc dependency)"
-            echo "- macOS binaries: Native builds for Intel and Apple Silicon"
+            # echo "- macOS binaries: Native builds for Intel and Apple Silicon"
           } > release-notes.txt
 
       - name: 🚀 Create GitHub Release
