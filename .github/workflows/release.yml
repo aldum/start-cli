@@ -72,11 +72,13 @@ jobs:
             arch_env: x86_64
             rust_target: x86_64-unknown-linux-musl
             build_method: zigbuild
+            container_tool: ['podman', 'docker']
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04-arm
             arch_env: aarch64
             rust_target: aarch64-unknown-linux-musl
             build_method: zigbuild
+            container_tool: ['podman', 'docker']
 
     steps:
       - name: 📥 Checkout start-os repository
@@ -141,7 +143,8 @@ jobs:
         if: matrix.build_method == 'zigbuild'
         working-directory: start-os
         env:
-          ENVIRONMENT: docker-registry
+          ENVIRONMENT: ${{ matrix.container_tool }}-registry
+          CTOOL: ${{ matrix.container_tool }}
           ARCH: ${{ matrix.arch_env }}
           TARGET: ${{ matrix.rust_target }}
           ENFORCE_USE_DOCKER: "0"
@@ -211,7 +214,7 @@ jobs:
       - name: 📤 Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cli-binaries-${{ matrix.target }}
+          name: cli-binaries-${{ matrix.container_tool }}-${{ matrix.target }}
           path: artifacts/
 
   release:
