@@ -52,7 +52,7 @@ jobs:
           echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.container_tool }}-${{ matrix.target }}
     needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
