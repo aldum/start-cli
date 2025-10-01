@@ -195,7 +195,7 @@ jobs:
           fi
 
           # Copy and strip binary
-          OUT="artifacts/start-cli-${{ matrix.target }}"
+          OUT="artifacts/start-cli-${{ matrix.container_tool }}-${{ matrix.target }}"
           cp "$BIN" "$OUT"
           chmod +x "$OUT"
 
@@ -205,16 +205,19 @@ jobs:
 
           # Create archive
           pushd artifacts >/dev/null
-          tar -czf "start-cli-${{ matrix.target }}.tar.gz" "start-cli-${{ matrix.target }}"
+          tar -czf "start-cli-${{ matrix.container_tool }}-${{ matrix.target }}.tar.gz" \
+            "start-cli-${{ matrix.container_tool }}-${{ matrix.target }}"
 
           # Generate checksum
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "start-cli-${{ matrix.target }}.tar.gz" > "start-cli-${{ matrix.target }}.tar.gz.sha256"
+            sha256sum "start-cli-${{ matrix.container_tool }}-${{ matrix.target }}.tar.gz" > \
+              "start-cli-${{ matrix.container_tool }}-${{ matrix.target }}.tar.gz.sha256"
           else
-            shasum -a 256 "start-cli-${{ matrix.target }}.tar.gz" > "start-cli-${{ matrix.target }}.tar.gz.sha256"
+            shasum -a 256 "start-cli-${{ matrix.container_tool }}-${{ matrix.target }}.tar.gz" > \
+              "start-cli-${{ matrix.container_tool }}-${{ matrix.target }}.tar.gz.sha256"
           fi
 
-          echo "📦 Archive created: start-cli-${{ matrix.target }}.tar.gz"
+          echo "📦 Archive created: start-cli-${{ matrix.container_tool }}-${{ matrix.target }}.tar.gz"
           popd >/dev/null
 
       - name: 📤 Upload build artifacts
