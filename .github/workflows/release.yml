@@ -85,6 +85,12 @@ jobs:
             rust_target: aarch64-unknown-linux-musl
             build_method: zigbuild
             container_tool: docker
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-22.04-arm
+            arch_env: aarch64
+            rust_target: aarch64-unknown-linux-musl
+            build_method: zigbuild
+            container_tool: podman
 
     steps:
       - name: 📥 Checkout start-os repository
